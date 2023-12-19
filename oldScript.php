@@ -17,16 +17,6 @@ $attendances = $zk->getAttendance();
 $nullValue = null;
 $usersById = [];  
 $attedanceWithNames = [];     
-$absent = 'absent';
-$present = 'present';
-// File path to store the last execution date
-$lastExecutionFilePath = '/home/zubair/Documents/Projects/ZKTeco-Machine-Integration-Script-main/last_executed.txt';
-
-// Read the last execution date from the file
-$lastExecutionDate = file_get_contents($lastExecutionFilePath);
-
-// Get the current date
-$currentDate = date('Y-m-d');
 
 foreach ($users as $user) {
     $usersById[$user[0]] = $user[1]; //associative array for names with employee_id as key and name as value
@@ -59,33 +49,18 @@ try {
 
 
   // QUERIES
-  $insertQuery = $conn->prepare("INSERT INTO attendances (employee_id, check_in, check_out, timestamp, name, status) VALUES (?, ?, ?, ?, ?, ?)"); 
-  $updateAttendance = $conn->prepare("UPDATE attendances SET check_in = :check_in, check_out = :check_out, timestamp = :timestamp, status = :status WHERE employee_id = :employee_id AND Date(timestamp) = :attendance_date");
   $companyEmployees = $conn->prepare("SELECT * FROM employees");
   $companyEmployees->execute();
   $companyEmployees = $companyEmployees->fetchAll(PDO::FETCH_ASSOC);
 
-  if ($lastExecutionDate !== $currentDate) {
-    foreach ($companyEmployees as $employee){
-      $insertQuery->bindParam(1, $employee['employee_id']);
-      $insertQuery->bindParam(2, $nullValue);
-      $insertQuery->bindParam(3, $nullValue);
-      $insertQuery->bindParam(4, $currentDate);
-      $insertQuery->bindParam(5, $employee['name']);
-      $insertQuery->bindParam(6, $absent);
-      $insertQuery->execute();
-    }
-    file_put_contents($lastExecutionFilePath, $currentDate);
-  }
-  // $updateAttendance =  $conn->prepare('UPDATE attendances SET check_in')
-  
+  $insertQuery = $conn->prepare("INSERT INTO attendances (serial_number, employee_id, check_in, check_out, timestamp, name) VALUES (?, ?, ?, ?, ?, ?)"); 
   $selectLastAttendanceTimeQuery =  $conn->prepare("SELECT timestamp FROM attendances ORDER BY timestamp DESC LIMIT 1"); //This is to know when was the last attendance inserted into db, it is getting greatest timestamp from db
   $selectLastAttendanceTimeQuery->execute();
   $resultLastAttendanceTime = $selectLastAttendanceTimeQuery->fetch(PDO::FETCH_ASSOC);
 
   $selectQuery = $conn->prepare("SELECT check_in, check_out FROM attendances WHERE DATE(timestamp) = :date AND employee_id = :employee_id AND check_in IS NOT NULL AND check_out IS NULL"); //Checks wether there is any null checkout. No user should do check_in if checkout is null
   $checkOutUpdateQuery = $conn->prepare("UPDATE attendances SET check_out = :checkOut , timestamp = :new_timestamp WHERE DATE(timestamp) = :date AND employee_id = :employee_id AND check_in IS NOT NULL AND check_out IS NULL"); //update where checkout is null and update the timestamp to checkout_time
-
+  
 
 
   foreach($attedanceWithNames as $key=>$attendance){
@@ -111,17 +86,13 @@ try {
       $selectQueryResult = $selectQuery->fetch(PDO::FETCH_ASSOC);
 
         if (strtotime($resultLastAttendanceTime['timestamp']) < strtotime($attendanceTime) ) { //enters to loop only if time of the attendance is greater than last attendance time
-
           for($i=0; $i<count($attendance); $i++){
             if($i==2 && $status =='0'){       //if attendance is checkIn, 0 identifies checkIn
 
-              $updateAttendance->bindParam(':check_in',$attendanceTime);     
-              $updateAttendance->bindParam(':check_out',$nullValue);          
-              $updateAttendance->bindParam(':timestamp',$attendanceTime);   
-              $updateAttendance->bindParam(':status',$present);   
-              $updateAttendance->bindParam(':attendance_date',$date);   
-              $updateAttendance->bindParam(':employee_id',$employeeId);   
+              $insertQuery->bindParam(3,$attendanceTime);     // 3 is check in
+              $insertQuery->bindParam(4,$nullValue);          // 4 is checkOut
 
+              echo "inserting the check in :". $attendanceTime;
 
               if($selectQueryResult){         //if there is a user who hasn't checkout and wants to check_in again 
                 $dontCheckIn = true;
@@ -148,12 +119,17 @@ try {
                     echo  $e->getMessage();
                   }
             }
-            
+            elseif($i == 3 || $i == 4){     //for indexes 3=>timestamp and 4=>name
+              $insertQuery->bindParam($i+2,$attendance[$i]);
+            }
+            else {        // for first two indexes serialNumber and employeeId
+              $insertQuery->bindParam($i+1,$attendance[$i]);
+            }
           }
 
           if(!$updated  && !$dontCheckIn)    
           {
-            $updateAttendance->execute();
+            $insertQuery->execute();
             echo "<br> INSERTED";
           }
 
