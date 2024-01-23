@@ -1,4 +1,5 @@
 <?php
+// echo "dds";
 
 require 'zklibrary.php';
 require 'config.php';
@@ -20,36 +21,12 @@ $attedanceWithNames = [];
 $absent = 'absent';
 $present = 'present';
 // File path to store the last execution date
-$lastExecutionFilePath = '/home/zubair/Documents/Projects/ZKTeco-Machine-Integration-Script-main/last_executed.txt';
+$lastExecutionFilePath = '/home/zubair/Documents/ZKTeco-Machine-Integration-Script/last_executed.txt';
 
 // Read the last execution date from the file
 $lastExecutionDate = file_get_contents($lastExecutionFilePath);
-
 // Get the current date
 $currentDate = date('Y-m-d');
-
-foreach ($users as $user) {
-    $usersById[$user[0]] = $user[1]; //associative array for names with employee_id as key and name as value
-}
-
-foreach ($attendances as $index=>$attendance) {
-    $employeeId = $attendance[1];   
-    $attendanceTime = $attendance[3];
-    if (isset($usersById[$employeeId]) && $index!=0 ) {   //if associative array created above has employeeId coming from attendance array. index 0 has garbaage data
-        $nameOfUser = $usersById[$employeeId];
-        $attendance[] = $nameOfUser; //pushing name
-
-        $timestamp = strtotime($attendanceTime);
-          try { //We did this because we needed mysql timestamp to store in db
-              $mysqlTimestamp = date("Y-m-d H:i:s", $timestamp);
-              $attendance[3] = $mysqlTimestamp; //replacing timestamp from string
-          } catch (\Throwable $th) {
-              echo "Invalid date string.\n ". $th->getMessage();
-          }
-
-        $attedanceWithNames[] = $attendance; //Pushing attendance in attedanceWithNames
-    }
-}
 
 try {
   $conn = new PDO("mysql:host=$servername;dbname=".$db, $username, $password);    
@@ -76,19 +53,19 @@ try {
       $insertQuery->execute();
     }
     file_put_contents($lastExecutionFilePath, $currentDate);
-  }
-  // $updateAttendance =  $conn->prepare('UPDATE attendances SET check_in')
-  
-  $selectLastAttendanceTimeQuery =  $conn->prepare("SELECT timestamp FROM attendances ORDER BY timestamp DESC LIMIT 1"); //This is to know when was the last attendance inserted into db, it is getting greatest timestamp from db
-  $selectLastAttendanceTimeQuery->execute();
-  $resultLastAttendanceTime = $selectLastAttendanceTimeQuery->fetch(PDO::FETCH_ASSOC);
+}
+// $updateAttendance =  $conn->prepare('UPDATE attendances SET check_in')
 
-  $selectQuery = $conn->prepare("SELECT check_in, check_out FROM attendances WHERE DATE(timestamp) = :date AND employee_id = :employee_id AND check_in IS NOT NULL AND check_out IS NULL"); //Checks wether there is any null checkout. No user should do check_in if checkout is null
-  $checkOutUpdateQuery = $conn->prepare("UPDATE attendances SET check_out = :checkOut , timestamp = :new_timestamp WHERE DATE(timestamp) = :date AND employee_id = :employee_id AND check_in IS NOT NULL AND check_out IS NULL"); //update where checkout is null and update the timestamp to checkout_time
+$selectLastAttendanceTimeQuery =  $conn->prepare("SELECT timestamp FROM attendances ORDER BY timestamp DESC LIMIT 1"); //This is to know when was the last attendance inserted into db, it is getting greatest timestamp from db
+$selectLastAttendanceTimeQuery->execute();
+$resultLastAttendanceTime = $selectLastAttendanceTimeQuery->fetch(PDO::FETCH_ASSOC);
+
+$selectQuery = $conn->prepare("SELECT check_in, check_out FROM attendances WHERE DATE(timestamp) = :date AND employee_id = :employee_id AND check_in IS NOT NULL AND check_out IS NULL"); //Checks wether there is any null checkout. No user should do check_in if checkout is null
+$checkOutUpdateQuery = $conn->prepare("UPDATE attendances SET check_out = :checkOut , timestamp = :new_timestamp WHERE DATE(timestamp) = :date AND employee_id = :employee_id AND check_in IS NOT NULL AND check_out IS NULL"); //update where checkout is null and update the timestamp to checkout_time
 
 
 
-  foreach($attedanceWithNames as $key=>$attendance){
+foreach($attendances as $key=>$attendance){
       $updated = false;
       $dontCheckIn = false;
       $employeeId = $attendance[1];
@@ -109,7 +86,6 @@ try {
 
       $selectQuery->execute();
       $selectQueryResult = $selectQuery->fetch(PDO::FETCH_ASSOC);
-
         if (strtotime($resultLastAttendanceTime['timestamp']) < strtotime($attendanceTime) ) { //enters to loop only if time of the attendance is greater than last attendance time
 
           for($i=0; $i<count($attendance); $i++){
